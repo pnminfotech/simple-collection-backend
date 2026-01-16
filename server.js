@@ -18,13 +18,36 @@ const Reminder = require("./models/Reminder");
 const app = express();
 
 // ---------- CORS + JSON ----------
+// app.use(
+//   cors({
+//     origin: "http://localhost:5173",
+//     credentials: true,
+//   })
+// );
+
+const allowedOrigins = [
+  "http://localhost:5173",
+  "https://pnminfotech.com",
+  "https://www.pnminfotech.com",
+];
+
 app.use(
   cors({
-    origin: "http://localhost:5173",
+    origin: (origin, cb) => {
+      if (!origin) return cb(null, true);
+      if (allowedOrigins.includes(origin)) return cb(null, true);
+      return cb(new Error("CORS blocked: " + origin));
+    },
     credentials: true,
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
   })
 );
+
+app.options("*", cors());
 app.use(express.json());
+
+// app.use(express.json());
 
 // ---------- ROUTES ----------
 app.use("/api/auth", authRoutes);
