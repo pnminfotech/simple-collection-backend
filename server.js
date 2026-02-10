@@ -18,12 +18,34 @@ const Reminder = require("./models/Reminder");
 const app = express();
 
 // ---------- CORS + JSON ----------
+const allowedOrigins = [
+  "http://localhost:5173",
+  "https://pnminfotech.com",
+  "https://www.pnminfotech.com",
+];
+
 app.use(
   cors({
-    origin: "http://localhost:5173",
+    origin: function (origin, callback) {
+      // allow requests with no origin (like Postman) too
+      if (!origin) return callback(null, true);
+
+      if (allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+
+      return callback(new Error("CORS not allowed for this origin: " + origin));
+    },
     credentials: true,
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
   })
 );
+
+// handle preflight explicitly (helps on some hosts/proxies)
+app.options(/.*/, cors());
+
+
 app.use(express.json());
 
 // ---------- ROUTES ----------
