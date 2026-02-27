@@ -149,7 +149,11 @@ router.post("/send-now", authMiddleware, async (req, res) => {
     });
   } catch (error) {
     console.error("[Reminder][Manual] Send now error:", error);
-    return res.status(500).json({ message: "Server error" });
+    return res.status(500).json({
+      message: "Failed to send reminders.",
+      detail: error.message,
+      code: error.code || null,
+    });
   }
 });
 
