@@ -5,10 +5,26 @@ const authMiddleware = require("../middleware/authMiddleware");
 
 const router = express.Router();
 
+const SMTP_CONNECT_TIMEOUT_MS = 10000;
+const SMTP_SOCKET_TIMEOUT_MS = 15000;
+const PER_EMAIL_TIMEOUT_MS = 20000;
+
+function hasSmtpConfig() {
+  return Boolean(
+    process.env.SMTP_HOST &&
+      process.env.SMTP_PORT &&
+      process.env.SMTP_USER &&
+      process.env.SMTP_PASS
+  );
+}
+
 const transporter = nodemailer.createTransport({
   host: process.env.SMTP_HOST,
   port: Number(process.env.SMTP_PORT) || 587,
   secure: Number(process.env.SMTP_PORT) === 465,
+  connectionTimeout: SMTP_CONNECT_TIMEOUT_MS,
+  greetingTimeout: SMTP_CONNECT_TIMEOUT_MS,
+  socketTimeout: SMTP_SOCKET_TIMEOUT_MS,
   auth: {
     user: process.env.SMTP_USER,
     pass: (process.env.SMTP_PASS || "").replace(/\s+/g, ""),
@@ -19,7 +35,7 @@ async function sendReminderEmail(entry) {
   if (!entry.email) return null;
 
   const mailOptions = {
-    from: process.env.FROM_EMAIL,
+    from: process.env.FROM_EMAIL || process.env.SMTP_USER,
     to: entry.email,
     cc: "pnminfotech2024@gmail.com",
     subject: "Reminder: Pending Venue Charges for BNI Alpha",
@@ -44,12 +60,34 @@ BNI Alpha`,
   return info;
 }
 
+function withTimeout(promise, ms, label) {
+  let timer;
+  const timeoutPromise = new Promise((_, reject) => {
+    timer = setTimeout(() => {
+      reject(new Error(`${label} timed out after ${ms}ms`));
+    }, ms);
+  });
+
+  return Promise.race([promise, timeoutPromise]).finally(() =>
+    clearTimeout(timer)
+  );
+}
+
 /**
  * POST /api/reminders/send-now
  * Send reminder email immediately to all pending customers.
  */
 router.post("/send-now", authMiddleware, async (req, res) => {
   try {
+    if (!hasSmtpConfig()) {
+      console.error(
+        "[Reminder][Manual] Missing SMTP config. Check SMTP_HOST/PORT/USER/PASS."
+      );
+      return res.status(500).json({
+        message: "Email service is not configured on server.",
+      });
+    }
+
     console.log(
       `[Reminder][Manual] Triggered by userId=${req.user.userId}, collectorName=${req.user.collectorName || req.user.name || ""}`
     );
@@ -76,7 +114,11 @@ router.post("/send-now", authMiddleware, async (req, res) => {
 
     for (const entry of pendingEntries) {
       try {
-        await sendReminderEmail(entry);
+        await withTimeout(
+          sendReminderEmail(entry),
+          PER_EMAIL_TIMEOUT_MS,
+          `Email send to ${entry.email}`
+        );
         sent++;
       } catch (error) {
         failed++;
