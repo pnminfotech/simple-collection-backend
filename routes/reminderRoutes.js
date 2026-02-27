@@ -92,6 +92,8 @@ router.post("/send-now", authMiddleware, async (req, res) => {
       `[Reminder][Manual] Triggered by userId=${req.user.userId}, collectorName=${req.user.collectorName || req.user.name || ""}`
     );
 
+    await transporter.verify();
+
     const pendingEntries = await Entry.find({
       status: "Pending",
       email: { $nin: [null, ""] },
@@ -111,6 +113,7 @@ router.post("/send-now", authMiddleware, async (req, res) => {
 
     let sent = 0;
     let failed = 0;
+    const failedDetails = [];
 
     for (const entry of pendingEntries) {
       try {
@@ -122,17 +125,27 @@ router.post("/send-now", authMiddleware, async (req, res) => {
         sent++;
       } catch (error) {
         failed++;
+        failedDetails.push({
+          email: entry.email,
+          error: error.message,
+        });
         console.error(
           `[Reminder][Manual] Failed -> to=${entry.email}, error=${error.message}`
         );
       }
     }
 
+    const message =
+      sent === 0 && failed > 0
+        ? `Reminder send failed for all pending client(s). Failed: ${failed}.`
+        : `Reminder sent to ${sent} pending client(s). Failed: ${failed}.`;
+
     return res.json({
       ok: true,
-      message: `Reminder sent to ${sent} pending client(s).`,
+      message,
       sent,
       failed,
+      failedDetails,
     });
   } catch (error) {
     console.error("[Reminder][Manual] Send now error:", error);
